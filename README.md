@@ -53,13 +53,13 @@ Control your drag strip from **Chrome or Edge** with just a USB cable and this w
 
 # ⚙️ Commands (for reference)
 
-- save driver1 <ms1> <ms2> <ms3>
-- save driver2 <ms1> <ms2> <ms3>
+- save driver1 ms1 ms2 ms3
+- save driver2 ms1 ms2 ms3
 - mode 1servo | mode 2servo
 - delays on | delays off
 - timer on | timer off
-- angles s1 <up> <down>
-- angles s2 <up> <down>
+- angles s1 up down
+- angles s2 up down
 - start | stop | reset | status
 
 ---
