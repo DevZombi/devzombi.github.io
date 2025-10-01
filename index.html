@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Drag Strip — Serial Controller</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      margin: 0; background: #0b0c0e; color: #e7e9ee;
+    }
+
+    /* Header */
+    .app-header {
+      position: sticky; top: 0; z-index: 20;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px; border-bottom: 1px solid #2a2e35;
+      background: rgba(10,11,13,0.9); backdrop-filter: blur(6px);
+    }
+    .app-title { font-weight: 700; letter-spacing: .2px; font-size: 18px; display: inline-flex; gap: 10px; align-items: center; }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid #353a42; color:#b8bec9; }
+    .right-actions { display: inline-flex; gap: 10px; align-items: center; }
+
+    .btn {
+      background: transparent; color: #e7e9ee; border: 1px solid #3a4048;
+      padding: 8px 12px; border-radius: 10px; cursor: pointer; transition: .15s ease;
+    }
+    .btn:hover { border-color: #5a626e; transform: translateY(-1px); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+    .btn-primary {
+      background: linear-gradient(180deg,#4c8cf4,#2c6be6);
+      border-color: transparent; color: #fff;
+    }
+    .btn-primary:hover { filter: brightness(1.05); }
+
+    .container { max-width: 980px; margin: 24px auto; padding: 0 20px; }
+
+    .panel {
+      border: 1px solid #2a2e35; border-radius: 14px; padding: 16px; background: #111316;
+      margin: 14px 0;
+    }
+    .panel h2 { font-size: 15px; margin: 0 0 10px; opacity: .9; }
+
+    .controls {
+      display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: center;
+    }
+
+    .elapsed {
+      display: inline-flex; align-items: center; gap: 10px; margin-left: 12px;
+      padding: 8px 12px; border-radius: 10px; border: 1px solid #2a2e35; background: #0d0f12;
+      font-weight: 700;
+    }
+
+    #log {
+      height: 260px; overflow: auto; padding: 12px; border: 1px dashed #2a2e35; border-radius: 12px;
+      white-space: pre-wrap; font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #0b0c0f;
+    }
+
+    /* Modal */
+    dialog::backdrop { background: rgba(0,0,0,0.5); backdrop-filter: blur(3px); }
+    dialog {
+      border: 1px solid #2a2e35; border-radius: 16px; padding: 0; max-width: 840px; width: 96%;
+      color: #e7e9ee; background: #101114;
+    }
+    .dialog-header {
+      display: flex; align-items: center; justify-content: space-between; padding: 14px 16px;
+      border-bottom: 1px solid #23262c;
+    }
+    .dialog-title { font-weight: 700; font-size: 16px; }
+    .dialog-body { padding: 16px; display: grid; gap: 16px; }
+
+    .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .switch { display: inline-flex; gap: 10px; align-items: center; border: 1px solid #2d3239; padding: 6px 10px; border-radius: 999px; }
+    .seg { display: inline-flex; gap: 6px; border: 1px solid #2d3239; padding: 6px; border-radius: 999px; }
+    .seg input { display: none; }
+    .seg label {
+      padding: 6px 10px; border-radius: 999px; border: 1px solid transparent; cursor: pointer; font-size: 13px;
+    }
+    .seg input:checked + label { background: #1a2030; border-color: #41506b; }
+
+    .grid2 { display: grid; grid-template-columns: repeat(2, minmax(120px,1fr)); gap: 10px; }
+    .grid3 { display: grid; grid-template-columns: repeat(3, minmax(100px,1fr)); gap: 10px; }
+    .field { display: grid; gap: 6px; }
+    .field label { font-size: 12px; opacity: .8; }
+    .field input[type="number"] {
+      padding: 10px; border-radius: 10px; border: 1px solid #2d3239; background: #0c0e11; color: #e7e9ee;
+    }
+
+    .subtle { opacity: .7; font-size: 13px; }
+    .space { height: 6px; }
+
+    .dialog-footer {
+      display: flex; justify-content: space-between; align-items: center; gap: 10px;
+      padding: 12px 16px; border-top: 1px solid #23262c; background: #0d0f12; border-radius: 0 0 16px 16px;
+    }
+    .footer-left { display: flex; gap: 8px; align-items: center; }
+    .footer-right { display: flex; gap: 8px; }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="app-title">
+      <span>Drag Strip</span>
+      <span class="badge" id="portInfo">Serial</span>
+    </div>
+    <div class="right-actions">
+      <button class="btn" id="connect">Connect</button>
+      <button class="btn" id="disconnect" disabled>Disconnect</button>
+      <button class="btn" id="settingsBtn" title="Settings">Settings ⚙️</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Primary Controls -->
+    <section class="panel">
+      <h2>Controls</h2>
+      <div class="controls">
+        <button class="btn-primary btn" id="start" disabled>Start</button>
+        <button class="btn" id="stop" disabled>Stop</button>
+        <button class="btn" id="reset" disabled>Reset</button>
+        <button class="btn" id="statusBtn" disabled>Status</button>
+        <span class="elapsed"><span>Elapsed:</span> <span id="elapsed">--:--.---</span></span>
+      </div>
+    </section>
+
+    <!-- Log -->
+    <section class="panel">
+      <h2>Device Log</h2>
+      <div class="subtle">Live output from the controller.</div>
+      <div class="space"></div>
+      <div id="log" aria-label="Serial log"></div>
+      <div class="space"></div>
+      <div style="display:flex; justify-content:flex-end;">
+        <button class="btn" id="clearLog">Clear Log</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Settings Modal -->
+  <dialog id="settingsDialog">
+    <div class="dialog-header">
+      <div class="dialog-title">Settings</div>
+      <div>
+        <button class="btn" id="closeSettings">Close</button>
+      </div>
+    </div>
+
+    <div class="dialog-body">
+
+      <!-- Mode & Toggles -->
+      <section class="panel" style="margin:0;">
+        <h2>Mode & Options</h2>
+        <div class="form-row">
+          <div class="seg" role="radiogroup" aria-label="Servo Mode">
+            <input type="radio" name="mode" id="mode1" value="1">
+            <label for="mode1">1-Servo</label>
+            <input type="radio" name="mode" id="mode2" value="2" checked>
+            <label for="mode2">2-Servo</label>
+          </div>
+          <div class="switch"><label><input type="checkbox" id="delaysToggle" checked> Delays (2-Servo)</label></div>
+          <div class="switch"><label><input type="checkbox" id="timerToggle" checked> Timer</label></div>
+          <button class="btn" id="applyMode" disabled>Apply</button>
+        </div>
+        <div class="subtle">Use <em>Status</em> to read the current device configuration.</div>
+      </section>
+
+      <!-- Angles -->
+      <section class="panel" style="margin:0;">
+        <h2>Gate Angles</h2>
+        <div class="form-row" style="align-items:flex-start;">
+          <div style="flex:1; min-width:260px;">
+            <div class="field">
+              <label><strong>Servo 1</strong> <span id="curS1" class="subtle">up=—, down=—</span></label>
+              <div class="grid2">
+                <div class="field"><label for="s1up">Up</label><input type="number" id="s1up" min="0" max="180" placeholder="0–180" /></div>
+                <div class="field"><label for="s1down">Down</label><input type="number" id="s1down" min="0" max="180" placeholder="0–180" /></div>
+              </div>
+            </div>
+            <div class="space"></div>
+            <button class="btn" id="saveS1" disabled>Save S1 Angles</button>
+          </div>
+
+          <div style="flex:1; min-width:260px;">
+            <div class="field">
+              <label><strong>Servo 2</strong> <span id="curS2" class="subtle">up=—, down=—</span></label>
+              <div class="grid2">
+                <div class="field"><label for="s2up">Up</label><input type="number" id="s2up" min="0" max="180" placeholder="0–180" /></div>
+                <div class="field"><label for="s2down">Down</label><input type="number" id="s2down" min="0" max="180" placeholder="0–180" /></div>
+              </div>
+            </div>
+            <div class="space"></div>
+            <button class="btn" id="saveS2" disabled>Save S2 Angles</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Driver Delays -->
+      <section class="panel" style="margin:0;">
+        <h2>Driver Delays (ms)</h2>
+        <div class="subtle">Enter three values for each lane. When delays are enabled, one value is chosen at random per start.</div>
+        <div class="space"></div>
+
+        <div class="form-row" style="align-items:flex-start;">
+          <div style="flex:1; min-width:280px;">
+            <div class="field">
+              <label><strong>Driver 1</strong> <span id="curD1" class="subtle">[—, —, —]</span></label>
+              <div class="grid3">
+                <input type="number" id="d1a" min="0" placeholder="e.g. 120" />
+                <input type="number" id="d1b" min="0" placeholder="e.g. 250" />
+                <input type="number" id="d1c" min="0" placeholder="e.g. 375" />
+              </div>
+            </div>
+            <div class="space"></div>
+            <button class="btn" id="saveD1" disabled>Save Driver 1</button>
+          </div>
+
+          <div style="flex:1; min-width:280px;">
+            <div class="field">
+              <label><strong>Driver 2</strong> <span id="curD2" class="subtle">[—, —, —]</span></label>
+              <div class="grid3">
+                <input type="number" id="d2a" min="0" placeholder="e.g. 150" />
+                <input type="number" id="d2b" min="0" placeholder="e.g. 280" />
+                <input type="number" id="d2c" min="0" placeholder="e.g. 420" />
+              </div>
+            </div>
+            <div class="space"></div>
+            <button class="btn" id="saveD2" disabled>Save Driver 2</button>
+          </div>
+        </div>
+
+        <div class="form-row" style="justify-content:flex-end;">
+          <button class="btn" id="statusBtn2" disabled>Status</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="dialog-footer">
+      <div class="footer-left">
+        <span class="subtle">Changes apply instantly when you click Save/Apply buttons.</span>
+      </div>
+      <div class="footer-right">
+        <button class="btn" id="closeSettings2">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    // ---------- Utilities ----------
+    function log(line) {
+      const el = document.getElementById('log');
+      const atBottom = Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) < 4;
+      el.textContent += (el.textContent ? '\n' : '') + line;
+      if (atBottom) el.scrollTop = el.scrollHeight;
+    }
+    function readThree(idA, idB, idC) {
+      const a = parseInt(document.getElementById(idA).value, 10);
+      const b = parseInt(document.getElementById(idB).value, 10);
+      const c = parseInt(document.getElementById(idC).value, 10);
+      if (![a,b,c].every(v => Number.isFinite(v) && v >= 0)) {
+        alert("Please enter three non-negative integers (milliseconds).");
+        return null;
+      }
+      return [a,b,c];
+    }
+
+    // ---------- Web Serial ----------
+    let port, reader, inputClosed, writer;
+    let readLoopAbort = new AbortController();
+
+    const settingsDialog = document.getElementById('settingsDialog');
+    const statusBadge = document.getElementById('portInfo');
+
+    class LineBreakTransformer {
+      constructor(){ this.container=""; }
+      transform(chunk, controller) {
+        this.container += chunk;
+        const lines = this.container.split(/\r?\n/);
+        this.container = lines.pop();
+        for (const line of lines) controller.enqueue(line);
+      }
+      flush(controller){ if (this.container) controller.enqueue(this.container); }
+    }
+
+    function supportsSerial() { return 'serial' in navigator; }
+
+    async function connect() {
+      if (!supportsSerial()) {
+        alert("Web Serial API not supported. Use Chrome/Edge over HTTPS (or localhost).");
+        return;
+      }
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 115200 });
+
+        // reader
+        const decoder = new TextDecoderStream();
+        inputClosed = port.readable.pipeTo(decoder.writable);
+        const inputStream = decoder.readable.pipeThrough(new TransformStream(new LineBreakTransformer()));
+        reader = inputStream.getReader();
+
+        // writer
+        writer = port.writable.getWriter();
+
+        const info = port.getInfo?.() || {};
+        const infoText = `(vid: ${info.usbVendorId ?? "?"}, pid: ${info.usbProductId ?? "?"})`;
+        statusBadge.textContent = `Serial ${info.usbVendorId ?? ""}${info.usbVendorId ? ":" : ""}${info.usbProductId ?? ""}`;
+        log(`[info] Connected ${infoText}`);
+
+        // start reading
+        readLoopAbort = new AbortController();
+        readLines(readLoopAbort.signal).catch(err => {
+          if (err.name !== 'AbortError') {
+            console.error(err);
+            log(`[error] ${err.message || err}`);
+          }
+        });
+
+        // on unplug
+        port.addEventListener?.('disconnect', async () => { await disconnect(); });
+
+        // enable UI
+        setEnabled(true);
+
+        await send('status');
+
+      } catch (err) {
+        console.error(err);
+        log(`[error] ${err.message || err}`);
+        await disconnect();
+      }
+    }
+
+    async function disconnect() {
+      try {
+        readLoopAbort.abort();
+        if (reader) { try { await reader.cancel(); } catch {} try { reader.releaseLock(); } catch {} reader = null; }
+        if (inputClosed) { try { await inputClosed; } catch {} inputClosed = null; }
+        if (writer) { try { writer.releaseLock(); } catch {} writer = null; }
+        if (port) { try { await port.close(); } catch {} port = null; }
+      } finally {
+        setEnabled(false);
+        statusBadge.textContent = 'Serial';
+        log("[info] Disconnected");
+      }
+    }
+
+    function setEnabled(connected){
+      document.getElementById('disconnect').disabled = !connected;
+      document.getElementById('start').disabled = !connected;
+      document.getElementById('stop').disabled = !connected;
+      document.getElementById('reset').disabled = !connected;
+      document.getElementById('statusBtn').disabled = !connected;
+      document.getElementById('statusBtn2').disabled = !connected;
+      document.getElementById('applyMode').disabled = !connected;
+      document.getElementById('saveD1').disabled = !connected;
+      document.getElementById('saveD2').disabled = !connected;
+      document.getElementById('saveS1').disabled = !connected;
+      document.getElementById('saveS2').disabled = !connected;
+      document.getElementById('connect').disabled = connected;
+    }
+
+    async function readLines(abortSignal) {
+      while (!abortSignal.aborted) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value === undefined) continue;
+        handleLine(value);
+      }
+    }
+
+    async function send(cmd) {
+      if (!writer) return;
+      const data = new TextEncoder().encode(cmd + "\n");
+      await writer.write(data);
+      log(`> ${cmd}`);
+    }
+
+    // ---------- Parse device output to update UI ----------
+    function handleLine(line) {
+      log(line);
+
+      // Elapsed on stop or gate drop
+      const mStop = line.match(/\[stop\]\s*elapsed\s*(\d{2}:\d{2}\.\d{3})/i);
+      if (mStop) document.getElementById('elapsed').textContent = mStop[1];
+
+      const mGateAt = line.match(/\[gate\].*?\bat\s+(\d{2}:\d{2}\.\d{3})/i);
+      if (mGateAt) document.getElementById('elapsed').textContent = mGateAt[1];
+
+      // Driver delays
+      const mD1 = line.match(/Driver1 delays.*\[(\d+),\s*(\d+),\s*(\d+)\]/i);
+      if (mD1) {
+        const arr = [mD1[1], mD1[2], mD1[3]];
+        document.getElementById('curD1').textContent = `[${arr.join(', ')}]`;
+        document.getElementById('d1a').value = arr[0];
+        document.getElementById('d1b').value = arr[1];
+        document.getElementById('d1c').value = arr[2];
+      }
+      const mD2 = line.match(/Driver2 delays.*\[(\d+),\s*(\d+),\s*(\d+)\]/i);
+      if (mD2) {
+        const arr = [mD2[1], mD2[2], mD2[3]];
+        document.getElementById('curD2').textContent = `[${arr.join(', ')}]`;
+        document.getElementById('d2a').value = arr[0];
+        document.getElementById('d2b').value = arr[1];
+        document.getElementById('d2c').value = arr[2];
+      }
+
+      // Mode/toggles
+      const mMode = line.match(/Servo mode:\s*(\d-?servo|1-servo|2-servo)/i);
+      if (mMode) {
+        const isTwo = /2/.test(mMode[1]);
+        (isTwo ? document.getElementById('mode2') : document.getElementById('mode1')).checked = true;
+      }
+      const mDelays = line.match(/Delays enabled.*:\s*(YES|NO)/i);
+      if (mDelays) document.getElementById('delaysToggle').checked = mDelays[1].toUpperCase() === 'YES';
+
+      const mTimer = line.match(/Timer enabled:\s*(YES|NO)/i);
+      if (mTimer) document.getElementById('timerToggle').checked = mTimer[1].toUpperCase() === 'YES';
+
+      // Angles
+      const mAngles = line.match(/Gate angles:\s*S1\[up=(\d+),down=(\d+)\]\s*S2\[up=(\d+),down=(\d+)\]/i);
+      if (mAngles) {
+        const s1u = mAngles[1], s1d = mAngles[2], s2u = mAngles[3], s2d = mAngles[4];
+        document.getElementById('curS1').textContent = `up=${s1u}, down=${s1d}`;
+        document.getElementById('curS2').textContent = `up=${s2u}, down=${s2d}`;
+        document.getElementById('s1up').value = s1u;
+        document.getElementById('s1down').value = s1d;
+        document.getElementById('s2up').value = s2u;
+        document.getElementById('s2down').value = s2d;
+      }
+    }
+
+    // ---------- UI wiring ----------
+    document.getElementById('connect').addEventListener('click', connect);
+    document.getElementById('disconnect').addEventListener('click', disconnect);
+
+    document.getElementById('settingsBtn').addEventListener('click', () => settingsDialog.showModal());
+    document.getElementById('closeSettings').addEventListener('click', () => settingsDialog.close());
+    document.getElementById('closeSettings2').addEventListener('click', () => settingsDialog.close());
+
+    document.getElementById('start').addEventListener('click',  () => send('start'));
+    document.getElementById('stop').addEventListener('click',   () => send('stop'));
+    document.getElementById('reset').addEventListener('click',  () => { document.getElementById('elapsed').textContent="--:--.---"; send('reset'); });
+    document.getElementById('statusBtn').addEventListener('click', () => send('status'));
+    document.getElementById('statusBtn2').addEventListener('click', () => send('status'));
+    document.getElementById('clearLog').addEventListener('click', () => { document.getElementById('log').textContent = ""; });
+
+    document.getElementById('applyMode').addEventListener('click', async () => {
+      const m2 = document.getElementById('mode2').checked;
+      if (m2) await send('mode 2servo'); else await send('mode 1servo');
+      await new Promise(r => setTimeout(r, 60));
+      await send(document.getElementById('delaysToggle').checked ? 'delays on' : 'delays off');
+      await new Promise(r => setTimeout(r, 60));
+      await send(document.getElementById('timerToggle').checked ? 'timer on' : 'timer off');
+    });
+
+    document.getElementById('saveS1').addEventListener('click', () => {
+      const up = parseInt(document.getElementById('s1up').value, 10);
+      const dn = parseInt(document.getElementById('s1down').value, 10);
+      if (![up,dn].every(v => Number.isFinite(v) && v>=0 && v<=180)) {
+        alert("Enter S1 angles between 0 and 180."); return;
+      }
+      send(`angles s1 ${up} ${dn}`);
+    });
+    document.getElementById('saveS2').addEventListener('click', () => {
+      const up = parseInt(document.getElementById('s2up').value, 10);
+      const dn = parseInt(document.getElementById('s2down').value, 10);
+      if (![up,dn].every(v => Number.isFinite(v) && v>=0 && v<=180)) {
+        alert("Enter S2 angles between 0 and 180."); return;
+      }
+      send(`angles s2 ${up} ${dn}`);
+    });
+
+    document.getElementById('saveD1').addEventListener('click', () => {
+      const vals = readThree('d1a','d1b','d1c'); if (!vals) return;
+      send(`save driver1 ${vals[0]} ${vals[1]} ${vals[2]}`);
+    });
+    document.getElementById('saveD2').addEventListener('click', () => {
+      const vals = readThree('d2a','d2b','d2c'); if (!vals) return;
+      send(`save driver2 ${vals[0]} ${vals[1]} ${vals[2]}`);
+    });
+
+    if ('serial' in navigator) {
+      navigator.serial.addEventListener('connect', () => log('[info] A serial device became available. Click Connect to use it.'));
+      navigator.serial.addEventListener('disconnect', () => log('[info] A serial device was unplugged.'));
+    }
+  </script>
+</body>
+</html>
